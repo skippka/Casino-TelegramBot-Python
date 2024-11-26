@@ -1,9 +1,10 @@
 import telebot
 import random
 import time
-from game_file import read_from_file, write_in_file
+from game_file import get_user_data, update_user_data
 
 bot = telebot.TeleBot('6416697474:AAH2y6UeM0Rpdg8YiwS6FB0yv2uHh12Z73I')
+
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -30,11 +31,12 @@ def help(message):
 
 @bot.message_handler(commands=['bonus', 'бонус'])
 def bonus(message):
-    data = read_from_file()
+    user_id = message.chat.id
+    user_data = get_user_data(user_id)
     bonus_amount = random.randint(1, 500)
-    data['balance'] += bonus_amount
+    user_data['balance'] += bonus_amount
+    update_user_data(user_id, user_data)
     bot.send_message(message.chat.id, f'Тебе начислен бонус: {bonus_amount} Coin')
-    write_in_file(data)
 
 @bot.message_handler(commands=['game', 'игры'])
 def game(message):
@@ -44,23 +46,25 @@ def game(message):
 Как запустить игру 👇
 
 🎰 /casino [ставка]
-/crash [1.1-10]
+/crash [ставка]
 Пример: /casino 100
-Пример: /crash 3.7
+Пример: /crash 100
     ''')
 
 @bot.message_handler(commands=['balance', 'balanse'])
 def balance(message):
-    data = read_from_file()
+    user_id = message.chat.id
+    user_data = get_user_data(user_id)
     bot.send_message(message.chat.id, f'''
-Баланс: {data['balance']} Coin
+Баланс: {user_data['balance']} Coin
 ····················
-Сыграно игр: {data['gameplay']}
+Сыграно игр: {user_data['gameplay']}
     ''')
 
 @bot.message_handler(commands=['casino'])
 def casino(message):
-    data = read_from_file()
+    user_id = message.chat.id
+    user_data = get_user_data(user_id)
     try:
         args = message.text.split()
         if len(args) != 2 or not args[1].isdigit():
@@ -68,7 +72,7 @@ def casino(message):
             return
 
         stake = int(args[1])
-        if stake > data['balance']:
+        if stake > user_data['balance']:
             bot.send_message(message.chat.id, "Недостаточно средств на балансе!")
             return
         if stake <= 0:
@@ -77,16 +81,52 @@ def casino(message):
 
         multiplier = round(random.uniform(0, 2), 1)
         win = int(stake * multiplier)
-        data['balance'] += win - stake
-        data['gameplay'] += 1
+        user_data['balance'] += win - stake
+        user_data['gameplay'] += 1
 
         bot.send_message(message.chat.id, f'''
 Тебе выпало: {multiplier} 🎲
 Выигрыш: {win} Coin
-Новый баланс: {data['balance']} Coin
+Новый баланс: {user_data['balance']} Coin
         ''')
 
-        write_in_file(data)
+        update_user_data(user_id, user_data)
+
+    except Exception as e:
+        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}")
+
+@bot.message_handler(commands=['crash'])
+def crash(message):
+    user_id = message.chat.id
+    user_data = get_user_data(user_id)
+    try:
+        args = message.text.split()
+        if len(args) != 2 or not args[1].isdigit():
+            bot.send_message(message.chat.id, "Укажите ставку в виде числа. Пример: /crash 100")
+            return
+
+        stake = int(args[1])
+        if stake > user_data['balance']:
+            bot.send_message(message.chat.id, "Недостаточно средств на балансе!")
+            return
+        if stake <= 0:
+            bot.send_message(message.chat.id, "Ставка должна быть больше 0!")
+            return
+
+        crash_point = round(random.uniform(1.1, 10), 1)
+        user_choice = round(random.uniform(1.1, crash_point), 1)
+        user_data['gameplay'] += 1
+
+        if user_choice >= crash_point:
+            bot.send_message(message.chat.id, f"Твой множитель не дошел до {crash_point}! Ты проиграл!")
+            user_data['balance'] -= stake
+        else:
+            win = int(stake * user_choice)
+            user_data['balance'] += win - stake
+            bot.send_message(message.chat.id, f"Ты вышел с множителем {user_choice} и выиграл {win} Coin!")
+
+        bot.send_message(message.chat.id, f"Твой новый баланс: {user_data['balance']} Coin")
+        update_user_data(user_id, user_data)
 
     except Exception as e:
         bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}")
